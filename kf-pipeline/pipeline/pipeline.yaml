@@ -1,0 +1,166 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: first-pipeline-
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.7.1, pipelines.kubeflow.org/pipeline_compilation_time: '2021-08-18T08:25:54.111207',
+    pipelines.kubeflow.org/pipeline_spec: '{"description": "Applies Decision Tree
+      and Logistic Regression for classification problem.", "name": "First Pipeline"}'}
+  labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.7.1}
+spec:
+  entrypoint: first-pipeline
+  templates:
+  - name: decision-tree-classifier
+    container:
+      args: []
+      command: [python, dt.py, --data, /tmp/inputs/Data/data, --accuracy, /tmp/outputs/Accuracy/data]
+      image: sunoyon/decision-tree:1.0
+    inputs:
+      artifacts:
+      - {name: download-data-function-Data, path: /tmp/inputs/Data/data}
+    outputs:
+      parameters:
+      - name: decision-tree-classifier-Accuracy
+        valueFrom: {path: /tmp/outputs/Accuracy/data}
+      artifacts:
+      - {name: decision-tree-classifier-Accuracy, path: /tmp/outputs/Accuracy/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.7.1
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Trains
+          a  decision tree classifier", "implementation": {"container": {"command":
+          ["python", "dt.py", "--data", {"inputPath": "Data"}, "--accuracy", {"outputPath":
+          "Accuracy"}], "image": "sunoyon/decision-tree:1.0"}}, "inputs": [{"description":
+          "Path where data is stored.", "name": "Data", "type": "LocalPath"}], "name":
+          "Decision Tree classifier", "outputs": [{"description": "Accuracy metric",
+          "name": "Accuracy", "type": "Float"}]}', pipelines.kubeflow.org/component_ref: '{"digest":
+          "0e41ee5f251f4c7bf9c9d440e6d74423507059c5bcc79687c302499d26f39f05", "url":
+          "002_2_decision_tree/dt.yaml"}'}
+  - name: download-data-function
+    container:
+      args: []
+      command: [python, unload.py, --data, /tmp/outputs/Data/data]
+      image: sunoyon/unload_sklearn_breast_cancer:1.0
+    outputs:
+      artifacts:
+      - {name: download-data-function-Data, path: /tmp/outputs/Data/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.7.1
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Download
+          toy data from sklearn datasets", "implementation": {"container": {"command":
+          ["python", "unload.py", "--data", {"outputPath": "Data"}], "image": "sunoyon/unload_sklearn_breast_cancer:1.0"}},
+          "name": "Download Data Function", "outputs": [{"description": "Path where
+          data will be stored.", "name": "Data", "type": "LocalPath"}]}', pipelines.kubeflow.org/component_ref: '{"digest":
+          "1a2a11c8a5906a12299ef374471d16d823a6c42ae30129d23d1692890c80e88f", "url":
+          "001_unload/unload.yaml"}'}
+  - name: first-pipeline
+    dag:
+      tasks:
+      - name: decision-tree-classifier
+        template: decision-tree-classifier
+        dependencies: [download-data-function]
+        arguments:
+          artifacts:
+          - {name: download-data-function-Data, from: '{{tasks.download-data-function.outputs.artifacts.download-data-function-Data}}'}
+      - {name: download-data-function, template: download-data-function}
+      - name: logistic-regression-classifier
+        template: logistic-regression-classifier
+        dependencies: [download-data-function]
+        arguments:
+          artifacts:
+          - {name: download-data-function-Data, from: '{{tasks.download-data-function.outputs.artifacts.download-data-function-Data}}'}
+      - name: show-results
+        template: show-results
+        dependencies: [decision-tree-classifier, logistic-regression-classifier]
+        arguments:
+          parameters:
+          - {name: decision-tree-classifier-Accuracy, value: '{{tasks.decision-tree-classifier.outputs.parameters.decision-tree-classifier-Accuracy}}'}
+          - {name: logistic-regression-classifier-Accuracy, value: '{{tasks.logistic-regression-classifier.outputs.parameters.logistic-regression-classifier-Accuracy}}'}
+  - name: logistic-regression-classifier
+    container:
+      args: []
+      command: [python, lr.py, --data, /tmp/inputs/Data/data, --accuracy, /tmp/outputs/Accuracy/data]
+      image: sunoyon/logistic-regression:1.0
+    inputs:
+      artifacts:
+      - {name: download-data-function-Data, path: /tmp/inputs/Data/data}
+    outputs:
+      parameters:
+      - name: logistic-regression-classifier-Accuracy
+        valueFrom: {path: /tmp/outputs/Accuracy/data}
+      artifacts:
+      - {name: logistic-regression-classifier-Accuracy, path: /tmp/outputs/Accuracy/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.7.1
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Trains
+          a Logistic Regression Classifier", "implementation": {"container": {"command":
+          ["python", "lr.py", "--data", {"inputPath": "Data"}, "--accuracy", {"outputPath":
+          "Accuracy"}], "image": "sunoyon/logistic-regression:1.0"}}, "inputs": [{"description":
+          "Path where data is stored.", "name": "Data", "type": "LocalPath"}], "name":
+          "Logistic Regression Classifier", "outputs": [{"description": "Accuracy
+          metric", "name": "Accuracy", "type": "Float"}]}', pipelines.kubeflow.org/component_ref: '{"digest":
+          "9fe4690732195c2eada467fce90f8639346e418066cdded30dcd93b7f533b3c8", "url":
+          "002_1_logistic_regression/lr.yaml"}'}
+  - name: show-results
+    container:
+      args: [--decision-tree, '{{inputs.parameters.decision-tree-classifier-Accuracy}}',
+        --logistic-regression, '{{inputs.parameters.logistic-regression-classifier-Accuracy}}']
+      command:
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - |
+        def show_results(decision_tree, logistic_regression):
+            # Given the outputs from decision_tree and logistic regression components
+            # the results are shown.
+
+            print(f"Decision tree (accuracy): {decision_tree}")
+            print(f"Logistic regression (accuracy): {logistic_regression}")
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='Show results', description='')
+        _parser.add_argument("--decision-tree", dest="decision_tree", type=float, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--logistic-regression", dest="logistic_regression", type=float, required=True, default=argparse.SUPPRESS)
+        _parsed_args = vars(_parser.parse_args())
+
+        _outputs = show_results(**_parsed_args)
+      image: python:3.7
+    inputs:
+      parameters:
+      - {name: decision-tree-classifier-Accuracy}
+      - {name: logistic-regression-classifier-Accuracy}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.7.1
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
+          {"args": ["--decision-tree", {"inputValue": "decision_tree"}, "--logistic-regression",
+          {"inputValue": "logistic_regression"}], "command": ["sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def show_results(decision_tree, logistic_regression):\n    # Given the
+          outputs from decision_tree and logistic regression components\n    # the
+          results are shown.\n\n    print(f\"Decision tree (accuracy): {decision_tree}\")\n    print(f\"Logistic
+          regression (accuracy): {logistic_regression}\")\n\nimport argparse\n_parser
+          = argparse.ArgumentParser(prog=''Show results'', description='''')\n_parser.add_argument(\"--decision-tree\",
+          dest=\"decision_tree\", type=float, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--logistic-regression\",
+          dest=\"logistic_regression\", type=float, required=True, default=argparse.SUPPRESS)\n_parsed_args
+          = vars(_parser.parse_args())\n\n_outputs = show_results(**_parsed_args)\n"],
+          "image": "python:3.7"}}, "inputs": [{"name": "decision_tree", "type": "Float"},
+          {"name": "logistic_regression", "type": "Float"}], "name": "Show results"}',
+        pipelines.kubeflow.org/component_ref: '{}', pipelines.kubeflow.org/arguments.parameters: '{"decision_tree":
+          "{{inputs.parameters.decision-tree-classifier-Accuracy}}", "logistic_regression":
+          "{{inputs.parameters.logistic-regression-classifier-Accuracy}}"}'}
+  arguments:
+    parameters: []
+  serviceAccountName: pipeline-runner
